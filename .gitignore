@@ -1,0 +1,5 @@
+secrets
+cache
+__pycache__
+RCS
+.*.pylint3
