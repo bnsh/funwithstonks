@@ -1,7 +1,12 @@
 #! /usr/bin/env python3
 # vim: expandtab shiftwidth=4 tabstop=4
 
-"""Do something with stock data."""
+"""Before we can start really looking for patterns
+in stock price time series data, we need to make
+sure we have a set of time series that don't correlate
+too closely. Otherwise, the neural net (or something)
+will likely learn patterns that don't exist because
+multiple stocks look the same..."""
 
 from functools import reduce
 
@@ -12,6 +17,10 @@ import matplotlib.pyplot as plt
 from quandl import Quandl
 
 def plot(label, corr, sym1, data1, sym2, data2):
+    """
+    Just plots. This is helpful to see what either highly
+    correlated or non-correlated time series look like.
+    """
     assert data1.shape == data2.shape
     time_points = np.arange(data1.shape[0])
 
@@ -66,8 +75,14 @@ def main():
     raw_data = np.array([[massaged[symbol][date][4] for date in common_dates] for symbol in symbols])
 
     return_data = (raw_data[:, 1:] - raw_data[:, 0:-1]) / raw_data[:, 0:-1]
+    # normalize
     centered_return_data = return_data - return_data.mean(axis=1, keepdims=True)
 
+    """
+    calculate correlations
+    if we find highly correlated sets, one of the stocks in the set will be added 
+    to the blacklist
+    """
     cov = np.matmul(centered_return_data, centered_return_data.T) / (len(common_dates)-2)
     cov2 = np.cov(centered_return_data)
     epsilon = 1e-15
@@ -77,6 +92,13 @@ def main():
     corr_zero_diag = corr.copy()
     corr_zero_diag[np.arange(0, len(symbols)), np.arange(0, len(symbols))] = 0
 
+    """
+    find the max/min correlations and view them.
+    this gives us an idea of what a highly correlated set looks like,
+    and also what a low correlated set looks like.
+    we'll also add one stock from the highly correlated pair(s) to the 
+    blacklist, until there are no sufficiently highly correlated stock pairs.
+    """
     minindex = np.argmin(corr_zero_diag)
     minrow, mincol = minindex // len(symbols), minindex % len(symbols)
     maxindex = np.argmax(corr_zero_diag)
