@@ -55,8 +55,19 @@ def main():
             "TSLA", "TTD", "TTWO", "TXN", "VRSK", "VRTX", "WBA", "WBD", "WDAY",
             "XEL", "ZS"
         ]
+    # BKNG was removed because it has very few dates in common with everything else.
+    #      (After keeping only common dates, all that remained were
+    #       ['2018-03-08', '2018-03-09', '2018-03-12', '2018-03-13', '2018-03-14',
+    #        '2018-03-15', '2018-03-16', '2018-03-19', '2018-03-20', '2018-03-21',
+    #        '2018-03-22', '2018-03-23', '2018-03-26', '2018-03-27'])
+    # GOOGL was removed because it is nearly perfectly correlated with GOGL
+    # MNST was _originally_ removed because I (Binesh) forgot about stock splits.
+    #      So, now it's not being removed, since we're using adjusted closes.
+    # ODFL was also removed for some reason, not sure why, so we put it back
+    #      in.
+    # ("Removed" in the above context, means "added in the blacklist.")
     blacklist = set([
-        "BKNG", "GOOGL", "MNST", "ODFL"
+        "BKNG", "GOOGL"
     ])
 
     all_stocks = {}
@@ -67,12 +78,15 @@ def main():
 
     all_dates = set(datum[0] for _, full in all_stocks.items() for datum in full["dataset"]["data"])
     common_dates = sorted(reduce(lambda acc, x: acc & x, [set(datum[0] for datum in full["dataset"]["data"]) for sym, full in all_stocks.items()], all_dates))
+    print(common_dates)
 
     symbols = sorted(set(key for key, _ in all_stocks.items()))
 
     massaged = {symbol: {datum[0]: datum for datum in all_stocks[symbol]["dataset"]["data"]} for symbol in symbols}
 
-    raw_data = np.array([[massaged[symbol][date][4] for date in common_dates] for symbol in symbols])
+    # 4 is _raw_ close
+    # 11 is _adjusted_ (for splits) close
+    raw_data = np.array([[massaged[symbol][date][11] for date in common_dates] for symbol in symbols])
 
     return_data = (raw_data[:, 1:] - raw_data[:, 0:-1]) / raw_data[:, 0:-1]
     # normalize
