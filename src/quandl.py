@@ -1,7 +1,9 @@
 #! /usr/bin/env python3
 # vim: expandtab shiftwidth=4 tabstop=4
 
-"""This is the interface to quandl."""
+"""This is going to grab stock price info (as time series)
+from quandl. We're going to use this info find patterns
+with the time series."""
 
 import os
 import re
