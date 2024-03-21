@@ -9,36 +9,14 @@ will likely learn patterns that don't exist because
 multiple stocks look the same..."""
 
 from functools import reduce
+from collections import Counter
 
 from tqdm import tqdm
 import numpy as np
-import matplotlib.pyplot as plt
+import cvxopt
 
 from quandl import Quandl
-
-#pylint: disable=too-many-arguments
-def plot(label, corr, sym1, data1, sym2, data2):
-    """
-    Just plots. This is helpful to see what either highly
-    correlated or non-correlated time series look like.
-    """
-    assert data1.shape == data2.shape
-    time_points = np.arange(data1.shape[0])
-
-    plt.figure(figsize=(10, 6))
-
-    plt.plot(time_points, data1, label=sym1)
-
-    plt.plot(time_points, data2, label=sym2)
-
-    plt.legend()
-
-    plt.title(f"Comparison of {sym1:s} vs {sym2:s} ({label:s}: {corr:.7f})")
-    plt.xlabel("Time Point")
-    plt.ylabel("Value")
-
-    plt.show()
-#pylint: enable=too-many-arguments
+from decorrelate import plot
 
 def compute_covariance_matrix(data):
     # normalize
@@ -108,25 +86,73 @@ def main():
     # if we find highly correlated sets, one of the stocks in the set will be added
     # to the blacklist
 
-    # mean_returns = return_data.mean(axis=0, keepdims=True)
+    mean_returns = return_data.mean(axis=1, keepdims=True)
+    # (yesterday + today - yesterday) / yesterday
+    # r = exp(52 * 5 * log(1 + (today - yesterday) / yesterday))
+    yearly_returns = np.exp(52*5*np.log(1 + mean_returns))
     cov = compute_covariance_matrix(return_data)
-    corr = cov / np.matmul(np.sqrt(np.diagonal(cov)).reshape(-1, 1), np.sqrt(np.diagonal(cov)).reshape(1, -1))
-    corr_zero_diag = corr.copy()
-    corr_zero_diag[np.arange(0, len(symbols)), np.arange(0, len(symbols))] = 0
 
-    # find the max/min correlations and view them.
-    # this gives us an idea of what a highly correlated set looks like,
-    # and also what a low correlated set looks like.
-    # we'll also add one stock from the highly correlated pair(s) to the
-    # blacklist, until there are no sufficiently highly correlated stock pairs.
+    # We want the minimum variance portfolio
+    # Minimize [p1 p2 p3 .. pn] [cov] Transpose([p1 p2 p3 ... pn])
+    # call [p1 ... pn] "x" in the cvxopt docs
+    # call [cov] = "P/2" in the cvxopt docs So, P = 2 * cov
+    # our "q" in the cvxopt docs is np.zeros(1, num_stocks)
+    # subject to:
+    #      p1 < 1
+    #      -p1 < 0
+    #      G = np.concatenate(np.eye(num_stocks), -np.eye(num_stocks))
+    #      h = np.concatenate([np.ones(1, num_stocks), np.zeros(1, num_stocks)], axis=0)
+    #      [1 1 1 1 1... ] . x == 1 # The sum of all the proportions is 1
+    #      A = np.ones(num_stocks, 1)
+    #      b = np.ones(1, 1)
 
-    minindex = np.argmin(corr_zero_diag)
-    minrow, mincol = minindex // len(symbols), minindex % len(symbols)
-    maxindex = np.argmax(corr_zero_diag)
-    maxrow, maxcol = maxindex // len(symbols), maxindex % len(symbols)
+    num_stocks = len(symbols)
 
-    plot("Maximum Correlation", corr[maxrow, maxcol], symbols[maxrow], raw_data[maxrow], symbols[maxcol], raw_data[maxcol])
-    plot("Minimum Correlation", corr[minrow, mincol], symbols[minrow], raw_data[minrow], symbols[mincol], raw_data[mincol])
+    # These names correspond to the docs in cvxopt.
+    #pylint: disable=invalid-name
+    # https://cvxopt.org/userguide/coneprog.html#quadratic-programming
+    # minimize (1/2) x^T P x + q^T x
+    # In other words minimize the variance of the portfolio (x)
+    P = cvxopt.matrix(2 * cov)
+    q = cvxopt.matrix(np.zeros((num_stocks, 1)))
+
+    # G x <= h
+    # all the proportions should be 0 < x < 1
+    G = cvxopt.matrix(np.concatenate([np.eye(num_stocks), -np.eye(num_stocks)], axis=0))
+    h = cvxopt.matrix(np.concatenate([np.ones(num_stocks), np.zeros(num_stocks)], axis=0))
+
+    # A x = b
+    # the sum of the proportions should be 1.
+    # TODO: Change this so that A x = b should be the dollar value of our portfolio.
+    #       I think this means that instead of A being a "one" matrix, np.ones(1, num_stocks)
+    #       it should be [price(AAPL), price(CSCO), ...]
+    #       and b should be the how much money we have.
+    A = cvxopt.matrix(np.ones((1, num_stocks)))
+    b = cvxopt.matrix(np.ones((1, 1)))
+
+    res = cvxopt.solvers.qp(P, q, G, h, A, b)
+    x = np.array(list(res["x"])).reshape(num_stocks, 1)
+    #pylint: enable=invalid-name
+
+    proportions = Counter(dict(zip(symbols, list(res["x"]))))
+    symbol2idx = {symbol: idx for idx, symbol in enumerate(symbols)}
+
+    for symbol, proportion in proportions.most_common():
+        print(f"{(proportion*100):.2f}% {symbol:s} return={100 * yearly_returns[symbol2idx[symbol], 0]:.2f}%")
+
+    expected_return = np.matmul(yearly_returns.T, x)
+    expected_risk = np.sqrt(np.matmul(
+        x.T,
+        np.matmul(
+            cov,
+            x
+        )
+    ))
+    print(f"Expected Yearly Return: {100*expected_return[0, 0]:.2f}%")
+    print(f"Expected Daily Risk: {100*expected_risk[0, 0]:.2f}%")
+
+    sym = symbol2idx["FANG"]
+    plot("Test", 0, symbols[sym], raw_data[sym], symbols[sym], raw_data[sym])
 #pylint: enable=too-many-locals
 
 

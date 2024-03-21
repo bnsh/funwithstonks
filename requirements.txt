@@ -1,3 +1,4 @@
+cvxopt
 matplotlib
 numpy
 requests
