@@ -24,7 +24,7 @@ class Quandl:
 
     def grab_time_series_daily(self, symbol):
         cachefn = localfile(f"cache/quandl/{symbol:s}.json")
-        if (not os.path.exists(cachefn)) or (os.stat(cachefn).st_mtime < time.time() - 21600):
+        if (not os.path.exists(cachefn)) or (os.stat(cachefn).st_mtime < time.time() - 86400*365):
             os.makedirs(os.path.dirname(cachefn), mode=0o775, exist_ok=True)
             dataset = "WIKI"
             url = f"https://www.quandl.com/api/v3/datasets/{dataset:s}/{symbol:s}.json?api_key={self.api_key:s}"
