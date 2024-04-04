@@ -101,7 +101,15 @@ def main():
     raw_data = np.array([[massaged[symbol][date][11] for date in common_dates] for symbol in symbols])
     # raw_data is of size (len(symbol), len(common_dates))
 
-    return_data = (raw_data[:, 1:] - raw_data[:, 0:-1]) / raw_data[:, 0:-1] # (today - yesterday) / yesterday
+    # return_data = (raw_data[:, 1:] - raw_data[:, 0:-1]) / raw_data[:, 0:-1] # (today - yesterday) / yesterday
+    # Log is the right way to do things. Why?
+    # Because a gain of 25%  one day and a loss of 25% the next does _not_ return you to the same value.
+    # Because: 1 * 125% * 75% = 93.75%
+    #          1 * 5/4 * 3/4 = 15/16
+    # For it to return back that way you'd have to have
+    # 1 * 125% * 80% = 100%
+    # 1 * 5/4 * 4/5
+    return_data = np.log(raw_data[:, 1:]) - np.log(raw_data[:, :-1]) # log(today/yesterday)
     # return_data is of size (len(symbol), len(common_dates)-1)
 
     # calculate correlations

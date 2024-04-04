@@ -8,6 +8,8 @@ too closely. Otherwise, the neural net (or something)
 will likely learn patterns that don't exist because
 multiple stocks look the same..."""
 
+import csv
+
 from functools import reduce
 from collections import Counter
 
@@ -30,6 +32,7 @@ def compute_covariance_matrix(data):
 
 #pylint: disable=too-many-locals
 def main():
+    """This main function is horribly bloated and should be split into smaller functions."""
     quandl = Quandl()
     nasdaq100 = [
             "AAPL", "ABNB", "ADBE", "ADI", "ADP", "ADSK", "AEP", "AMAT", "AMD",
@@ -79,7 +82,7 @@ def main():
     raw_data = np.array([[massaged[symbol][date][11] for date in common_dates] for symbol in symbols])
     # raw_data is of size (len(symbol), len(common_dates))
 
-    return_data = (raw_data[:, 1:] - raw_data[:, 0:-1]) / raw_data[:, 0:-1] # (today - yesterday) / yesterday
+    return_data = np.log(raw_data[:, 1:]) - np.log(raw_data[:, :-1]) # log(today/yesterday)
     # return_data is of size (len(symbol), len(common_dates)-1)
 
     # calculate correlations
@@ -87,6 +90,8 @@ def main():
     # to the blacklist
 
     mean_returns = return_data.mean(axis=1, keepdims=True)
+                                                    # In the terms of https://en.wikipedia.org/wiki/Modern_portfolio_theory#Efficient_frontier_with_no_risk-free_asset
+                                                    # our "q" is their "R^T" (average returns)
     # (yesterday + today - yesterday) / yesterday
     # r = exp(52 * 5 * log(1 + (today - yesterday) / yesterday))
     yearly_returns = np.exp(52*5*np.log(1 + mean_returns))
@@ -114,7 +119,11 @@ def main():
     # minimize (1/2) x^T P x + q^T x
     # In other words minimize the variance of the portfolio (x)
     P = cvxopt.matrix(2 * cov)
-    q = cvxopt.matrix(np.zeros((num_stocks, 1)))
+
+    # In the terms of https://en.wikipedia.org/wiki/Modern_portfolio_theory#Efficient_frontier_with_no_risk-free_asset
+    # our "q" (in cvxopt land) is their "q * R^T" (risk tolerance * average returns in MPT land)
+    risk_tolerance = 1024.0 # risk tolerance is "q" in MPT land.
+    q = cvxopt.matrix(risk_tolerance * mean_returns) # mean_returns is "R^T" in MPT land.
 
     # G x <= h
     # all the proportions should be 0 < x < 1
@@ -140,6 +149,30 @@ def main():
     for symbol, proportion in proportions.most_common():
         print(f"{(proportion*100):.2f}% {symbol:s} return={100 * yearly_returns[symbol2idx[symbol], 0]:.2f}%")
 
+    fixed_order = [
+        "PEP", "XEL", "SIRI", "ISRG", "COST",
+        "CPRT", "FAST", "VRSK", "CMCSA", "GILD",
+        "ORLY", "ODFL", "FANG", "ROP", "AAPL",
+        "PCAR", "CTAS", "SBUX", "PANW", "KLAC",
+        "QCOM", "MRVL", "ROST", "DLTR", "AEP",
+        "REGN", "HON", "CHTR", "ANSS", "SNPS",
+        "EA", "AMGN", "WBA", "BIIB", "DXCM",
+        "FTNT", "CSX", "EXC", "MCHP", "MAR",
+        "CSGP", "ILMN", "ADI", "GOOG", "TMUS",
+        "PAYX", "CSCO", "PYPL", "CDNS", "INTC",
+        "IDXX", "AMZN", "KHC", "CTSH", "MNST",
+        "AVGO", "TXN", "VRTX", "AMAT", "MSFT",
+        "ADP", "INTU", "ADSK", "TSLA", "TTWO",
+        "SPLK", "ADBE", "NFLX", "NVDA", "WDAY",
+        "LRCX", "MDLZ", "MU", "AMD",
+    ]
+
+    with open("/tmp/reqs.csv", "wt", encoding="utf-8") as csvfp:
+        rows = [{"symbol": symbol, "proportion": proportions[symbol], "price": raw_data[symbol2idx[symbol], -1]} for symbol in fixed_order]
+        csvdw = csv.DictWriter(csvfp, fieldnames=["symbol", "proportion", "price"], extrasaction="ignore")
+        csvdw.writeheader()
+        csvdw.writerows(rows)
+
     expected_return = np.matmul(yearly_returns.T, x)
     expected_risk = np.sqrt(np.matmul(
         x.T,
@@ -150,12 +183,7 @@ def main():
     ))
     print(f"Expected Yearly Return: {100*expected_return[0, 0]:.2f}%")
     print(f"Expected Daily Risk: {100*expected_risk[0, 0]:.2f}%")
-
-    sym = symbol2idx["FANG"]
-    plot("Test", 0, symbols[sym], raw_data[sym], symbols[sym], raw_data[sym])
 #pylint: enable=too-many-locals
-
-
 
 if __name__ == "__main__":
     main()
