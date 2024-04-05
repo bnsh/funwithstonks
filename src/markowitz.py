@@ -9,6 +9,7 @@ will likely learn patterns that don't exist because
 multiple stocks look the same..."""
 
 import csv
+import argparse
 
 from functools import reduce
 from collections import Counter
@@ -33,6 +34,9 @@ def compute_covariance_matrix(data):
 #pylint: disable=too-many-locals
 def main():
     """This main function is horribly bloated and should be split into smaller functions."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--risk-tolerance", "-r", type=float, required=True)
+    args = parser.parse_args()
     quandl = Quandl()
     nasdaq100 = [
             "AAPL", "ABNB", "ADBE", "ADI", "ADP", "ADSK", "AEP", "AMAT", "AMD",
@@ -92,9 +96,10 @@ def main():
     mean_returns = return_data.mean(axis=1, keepdims=True)
                                                     # In the terms of https://en.wikipedia.org/wiki/Modern_portfolio_theory#Efficient_frontier_with_no_risk-free_asset
                                                     # our "q" is their "R^T" (average returns)
+
     # (yesterday + today - yesterday) / yesterday
     # r = exp(52 * 5 * log(1 + (today - yesterday) / yesterday))
-    yearly_returns = np.exp(52*5*np.log(1 + mean_returns))
+    yearly_returns = 52*5*mean_returns
     cov = compute_covariance_matrix(return_data)
 
     # We want the minimum variance portfolio
@@ -122,8 +127,8 @@ def main():
 
     # In the terms of https://en.wikipedia.org/wiki/Modern_portfolio_theory#Efficient_frontier_with_no_risk-free_asset
     # our "q" (in cvxopt land) is their "q * R^T" (risk tolerance * average returns in MPT land)
-    risk_tolerance = 1024.0 # risk tolerance is "q" in MPT land.
-    q = cvxopt.matrix(risk_tolerance * mean_returns) # mean_returns is "R^T" in MPT land.
+    risk_tolerance = args.risk_tolerance # risk tolerance is "q" in MPT land.
+    q = cvxopt.matrix(-risk_tolerance * mean_returns) # mean_returns is "R^T" in MPT land. We want to _maximize_ the returns, hence the negative sign.
 
     # G x <= h
     # all the proportions should be 0 < x < 1
@@ -181,7 +186,7 @@ def main():
             x
         )
     ))
-    print(f"Expected Yearly Return: {100*expected_return[0, 0]:.2f}%")
+    print(f"Expected Yearly Return: {100*(np.exp(expected_return)[0, 0]-1):.2f}%")
     print(f"Expected Daily Risk: {100*expected_risk[0, 0]:.2f}%")
 #pylint: enable=too-many-locals
 

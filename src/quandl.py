@@ -24,10 +24,10 @@ class Quandl:
 
     def grab_time_series_daily(self, symbol):
         cachefn = localfile(f"cache/quandl/{symbol:s}.json")
-        if (not os.path.exists(cachefn)) or (os.stat(cachefn).st_mtime < time.time() - 86400*365):
+        if (not os.path.exists(cachefn)) or (os.stat(cachefn).st_mtime < time.time() - 86400):
             os.makedirs(os.path.dirname(cachefn), mode=0o775, exist_ok=True)
             dataset = "WIKI"
-            url = f"https://www.quandl.com/api/v3/datasets/{dataset:s}/{symbol:s}.json?api_key={self.api_key:s}"
+            url = f"https://www.quandl.com/api/v3/datasets/{dataset:s}/{symbol:s}.json?start_date=1985-05-01&end_date=2024-04-03&api_key={self.api_key:s}"
             resp = requests.get(url, timeout=10)
             tmpfn = re.sub(r'\.json$', '-tmp.json', cachefn)
             with open(tmpfn, "wt", encoding="utf-8") as jsfp:
